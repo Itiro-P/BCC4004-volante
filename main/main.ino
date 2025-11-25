@@ -9,7 +9,7 @@
 #define ROTARY_ENC_PCINT_AB_IE PCIE2
 
 #define MAX_STRENGTH 160
-
+#define OFFSET 5
 #define POS_SENSOR PB2 // switch (absolute position)
 #define GP_BUTTON PB0 // general purpose button
 #define SERVO PB1
@@ -18,147 +18,143 @@
 
 #define MIN_PULSE 1050
 #define MAX_PULSE 4950
+#define PULSE_RANGE MAX_PULSE-MIN_PULSE
+#define EDGE_COUNT 4500
+#define ENCODER_RANGE (2 * EDGE_COUNT)
 
 #include "Rotary.h"
 volatile long count = 0; // encoder_rotativo = posicao relativa depois de ligado
 volatile bool absolute_sw = false; // chave de posicao do volante ativa?
 volatile long centro = 0;
-bool centralizado = false;
-int x = 0;
+volatile bool centralizado = false;
+volatile unsigned short lastOCR1A = (MAX_PULSE + MIN_PULSE) / 2;
 
 Rotary r = Rotary(ROTARY_ENC_A, ROTARY_ENC_B);
 
 void move(unsigned char power, bool cw = true) {
-  if (power == 0)
-    idle();
-  else {
-    if (cw) {
-      PORTB |= (1<<ATUA_CW);
-      PORTB &= ~(1<<ATUA_CCW);
-    } else {
-      PORTB &= ~(1<<ATUA_CW);
-      PORTB |= (1<<ATUA_CCW);
+    if (power == 0) idle();
+    else {
+        if (cw) {
+            PORTB |= (1<<ATUA_CW);
+            PORTB &= ~(1<<ATUA_CCW);
+        } else {
+            PORTB &= ~(1<<ATUA_CW);
+            PORTB |= (1<<ATUA_CCW);
+        }
+        setPWM(power);
     }
-    setPWM(power);
-  }
 }
 
 void encontrarCentro(){
-  unsigned long tempoParaFrenagem = 0;
-  absolute_sw = (0==(PINB&(1<<POS_SENSOR)));
-  // se o volante começar em cima da chave
-  while(!absolute_sw) move(170, 0);
-  stop();
-  // enquanto nao estiver na chave, roda no sentido horario
-  while(absolute_sw) move(170, 1);
-  stop();
-  tempoParaFrenagem = millis();
-  count = 0;
-  while(tempoParaFrenagem + 600 > millis()) centro = VOLTAS_ENCODER_DA_CHAVE_PARA_CENTRO-count;
-  count = 0;
-}
-
-void setup() {
-  Serial.begin(115200);
-  r.begin(true);
-  PCICR |= (1 << ROTARY_ENC_PCINT_AB_IE);
-  PCMSK2 |= (1 << ROTARY_ENC_PCINT_A) | (1 << ROTARY_ENC_PCINT_B);
-
-  //TCCR1A = (1<<WGM11);
-  //TCCR1B = (1<<WGM12) | (1<<WGM13) | (1<<CS11);
-
-  //TCCR1A |= (1<<COM1A1);
-  //ICR1 = 39999;
-  //OCR1A = MIN_PULSE;
-
-  DDRB &= ~((1<<GP_BUTTON)|(1<<POS_SENSOR));
-  DDRB |= (1<<ATUA_CW)|(1<<ATUA_CCW)|(1<<ATUA_STRENGTH)|(1<<SERVO);
-
-  PORTB |= (1<<POS_SENSOR);
-  PORTB |= (1<<GP_BUTTON);
-  PORTB &= ~(1<<ATUA_CW);
-  PORTB &= ~(1<<ATUA_CCW);
-
-  initPWM();
-  sei();
-
-  idle();
-  encontrarCentro();
-}
-
-void initPWM() {
-  OCR2A = 0;
-  TCCR2A = (1<<WGM20);
-  TCCR2B = (1<<CS21);
-  TCCR2A |= (1<<COM2A1);
+    unsigned long tempoParaFrenagem = 0;
+    absolute_sw = (0==(PINB&(1<<POS_SENSOR)));
+    // se o volante começar em cima da chave
+    while(!absolute_sw) move(170, 0);
+    stop();
+    // enquanto nao estiver na chave, roda no sentido horario
+    while(absolute_sw) move(170, 1);
+    stop();
+    tempoParaFrenagem = millis();
+    count = 0;
+    while(tempoParaFrenagem + 600 > millis()) centro = VOLTAS_ENCODER_DA_CHAVE_PARA_CENTRO-count;
+    count = 0;
 }
 
 void setPWM(unsigned char val) {
-  OCR2A = val < MAX_STRENGTH ? val: MAX_STRENGTH;
+    OCR2A = val < MAX_STRENGTH ? val: MAX_STRENGTH;
 }
 
 void stop(){
-  PORTB |= (1<<ATUA_CW) | (1<<ATUA_CCW);
+    PORTB |= (1<<ATUA_CW) | (1<<ATUA_CCW);
 }
 
 void idle() {
-  setPWM(0);
-  PORTB &= ~((1<<ATUA_CW) | (1<<ATUA_CCW));
+    setPWM(0);
+    PORTB &= ~((1<<ATUA_CW) | (1<<ATUA_CCW));
 }
 
 void centralizarVolante(){
-
-  while(count < centro-2){
-    move(153, 1);
-  }
-  stop();
-  while(count > centro+2) {
-    move(153, 0);
-  }
-  stop();
-  long long time = millis();
-  while(time + 500 > millis());
-  if(count < centro + 5 || count > centro - 5){
-    centralizado = true;
-  }
+    while(count < centro-OFFSET) move(153, 1);
+    stop();
+    while(count > centro+OFFSET) move(153, 0);
+    stop();
+    long long time = millis();
+    while(time + 500 > millis());
+    if(count < centro + OFFSET || count > centro - OFFSET) centralizado = true;
 }
 
-void servo(){
-  float giro = count/4500;
-  if(giro>1 || giro<-1){
-    return;
-  }
-  unsigned long pulse = giro * ((MAX_PULSE-MIN_PULSE)/2);
-  if(count < 0)
-    pulse *= -1;
-  else
-    pulse += (MAX_PULSE-MIN_PULSE)/2;
+void servo() {
+    if(count > EDGE_COUNT) {
+        OCR1A = MAX_PULSE;
+        return;
+    }
+    if(count < -EDGE_COUNT) {
+        OCR1A = MIN_PULSE;
+        return;
+    }
 
-  pulse += MIN_PULSE;
+    // Desloca o count para o intervalo 0 a 9000
+    unsigned long normalized_count = count + EDGE_COUNT;
 
+    // Pulso = (Normalizado / Encoder_Range) * Pulse_Range + MIN_PULSE
+    unsigned short pulse = (unsigned short)(((normalized_count * PULSE_RANGE) / ENCODER_RANGE) + MIN_PULSE);
+
+    OCR1A = pulse;
 }
 
+void setup() {
+    Serial.begin(115200);
+    r.begin(true);
+    PCICR |= (1 << ROTARY_ENC_PCINT_AB_IE);
+    PCMSK2 |= (1 << ROTARY_ENC_PCINT_A) | (1 << ROTARY_ENC_PCINT_B);
+
+    TCCR1A = (1<<WGM11);
+    TCCR1B = (1<<WGM12) | (1<<WGM13) | (1<<CS11); // Prescaler 8
+    TCCR1A |= (1<<COM1A1); // Ativa saída PWM no OC1A (PB1/SERVO)
+    ICR1 = 39999; // 50 Hz (16MHz / 8 / 40000)
+    OCR1A = (MAX_PULSE + MIN_PULSE) / 2; // Inicia no centro (90°)
+
+    DDRB &= ~((1<<GP_BUTTON)|(1<<POS_SENSOR));
+    DDRB |= (1<<ATUA_CW)|(1<<ATUA_CCW)|(1<<ATUA_STRENGTH)|(1<<SERVO);
+
+    PORTB |= (1<<POS_SENSOR);
+    PORTB |= (1<<GP_BUTTON);
+    PORTB &= ~(1<<ATUA_CW);
+    PORTB &= ~(1<<ATUA_CCW);
+
+    // PWM do volante
+    OCR2A = 0;
+    TCCR2A = (1<<WGM20);
+    TCCR2B = (1<<CS21);
+    TCCR2A |= (1<<COM2A1);
+
+    sei();
+
+    idle();
+    encontrarCentro();
+}
 
 void loop() {
-  if(!centralizado){
-    centralizarVolante();
-    idle();
-    count = 0;
-  }
-  if (millis()%300==0) {
-    Serial.print(count);
-    Serial.print(", ");
-    Serial.println(absolute_sw==true?'1':'0');
-    // Serial.print(", ");
-    // Serial.println(distanciaRestante);
-    Serial.println(centralizado);
-  }
+    if(!centralizado){
+        centralizarVolante();
+        idle();
+        count = 0;
+    } else {
+        // Já está centralizado. Então podemos mexer no servo
+        servo();
+    }
+    if (millis()%300==0) {
+        Serial.print(count);
+        Serial.print(", ");
+        Serial.println(absolute_sw==true?'1':'0');
+        Serial.println(centralizado);
+    }
 }
 
 ISR(PCINT2_vect) {
-  unsigned char result = r.process();
-  else if (result == DIR_CW) count--;
-  else if (result == DIR_CCW) count++;
+    unsigned char result = r.process();
+    else if(result == DIR_CW) count--;
+    else if(result == DIR_CCW) count++;
 
-  absolute_sw = 0==(PINB&(1<<POS_SENSOR));
+    absolute_sw = 0==(PINB&(1<<POS_SENSOR));
 }
