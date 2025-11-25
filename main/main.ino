@@ -14,11 +14,13 @@
 #define GP_BUTTON PB0 // general purpose button
 #define SERVO PB1
 
+#define VOLTAS_ENCODER_DA_CHAVE_PARA_CENTRO 1000
+
 #include "Rotary.h"
 volatile long count = 0; // encoder_rotativo = posicao relativa depois de ligado
 volatile bool absolute_sw = false; // chave de posicao do volante ativa?
 volatile long centro = 0;
-bool centralizado = 0;
+bool centralizado = false;
 int x = 0;
 
 Rotary r = Rotary(ROTARY_ENC_A, ROTARY_ENC_B);
@@ -55,7 +57,22 @@ void setPWM(unsigned char val) {
   OCR2A = val < MAX_STRENGTH ? val: MAX_STRENGTH;
 }
 
-void stop() {
+void stop(){
+  PORTB |= (1<<ATUA_CW) | (1<<ATUA_CCW);
+  unsigned long time = millis();
+  long ultimo_count = count;
+  while(time+500>millis());
+  if(ultimo_count - count != 0){
+    if(ultimo_count > count){
+      move(150, 0);
+    } else {
+      move(150, 1);
+    }
+  } else {
+    return;
+  }
+  time = millis();
+  while(time+500>millis());
   PORTB |= (1<<ATUA_CW) | (1<<ATUA_CCW);
 }
 
@@ -81,28 +98,27 @@ void move(unsigned char power, bool cw = true) {
 
 void encontrarCentro(){
   unsigned long tempoParaFrenagem = 0;
-  absolute_sw = 0==(PINB&(1<<POS_SENSOR));
+  absolute_sw = (0==(PINB&(1<<POS_SENSOR)));
   // se o volante começar em cima da chave
-  while(absolute_sw == 0) move(170, 0);
-
+  while(!absolute_sw) move(180, 0);
   stop();
   // enquanto nao estiver na chave, roda no sentido horario
-  while(absolute_sw != 0) move(160, 1);
+  while(absolute_sw) move(160, 1);
   stop();
   tempoParaFrenagem = millis();
   count = 0;
-  while(millis()-tempoParaFrenagem < 1000) centro = 730-count;
+  while(tempoParaFrenagem + 500 > millis()) centro = VOLTAS_ENCODER_DA_CHAVE_PARA_CENTRO-count;
   count = 0;
 }
 
 void centralizarVolante(){
 
   while(count < centro-5){ 
-    move(155, 1);
+    move(160, 1);
   }
   stop();
   while(count > centro+5) {
-    move(155, 0);
+    move(160, 0);
   }
   stop();
 }
