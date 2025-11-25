@@ -52,7 +52,7 @@ void carregarCentro() {
 }
 
 void salvarCentro(long valor) {
-    eeprom_update_dword(uint32_t*)EEPROM_CENTRO_ADDR, (uint32_t)valor);
+    eeprom_update_dword((uint32_t*)EEPROM_CENTRO_ADDR, (uint32_t)valor);
 }
 
 void move(unsigned char power, bool cw = true) {
@@ -159,7 +159,7 @@ void setup() {
 }
 
 void loop() {
-    gpLeitura = (PINB & (1<<GP_BUTTON)) ? 1 : 0
+    gpLeitura = (PINB & (1<<GP_BUTTON)) ? 1 : 0;
     if(!centralizado){
         centralizarVolante();
         idle();
@@ -185,7 +185,7 @@ void loop() {
 
 ISR(PCINT2_vect) {
     unsigned char result = r.process();
-    else if(result == DIR_CW) count--;
+    if(result == DIR_CW) count--;
     else if(result == DIR_CCW) count++;
 
     absolute_sw = 0==(PINB&(1<<POS_SENSOR));
