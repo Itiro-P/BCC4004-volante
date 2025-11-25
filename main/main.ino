@@ -13,6 +13,7 @@
 #define POS_SENSOR PB2 // switch (absolute position)
 #define GP_BUTTON PB0 // general purpose button
 #define SERVO PB1
+#define DEBOUNCE 200
 
 #define VOLTAS_ENCODER_DA_CHAVE_PARA_CENTRO 730
 
@@ -21,15 +22,38 @@
 #define PULSE_RANGE MAX_PULSE-MIN_PULSE
 #define EDGE_COUNT 4500
 #define ENCODER_RANGE (2 * EDGE_COUNT)
+#define EEPROM_CENTRO_ADDR 0
 
 #include "Rotary.h"
+#include <avr/eeprom.h>
+
 volatile long count = 0; // encoder_rotativo = posicao relativa depois de ligado
 volatile bool absolute_sw = false; // chave de posicao do volante ativa?
-volatile long centro = 0;
+volatile long centro = -1; // ultima posicao do centro do volante
 volatile bool centralizado = false;
-volatile unsigned short lastOCR1A = (MAX_PULSE + MIN_PULSE) / 2;
+
+bool gpLeitura = (PINB & (1<<GP_BUTTON)) ? 1 : 0, lastGpLeitura = gpLeitura;
+unsigned long millisGp = 0;
 
 Rotary r = Rotary(ROTARY_ENC_A, ROTARY_ENC_B);
+
+void carregarCentro() {
+    // Lê 4 bytes (dword) do endereço de memória e armazena em 'centro'.
+    centro = (long)eeprom_read_dword((uint32_t*)EEPROM_CENTRO_ADDR);
+
+    // Verificação de segurança: Se o valor lido for um valor 'default'
+    // ou absurdo (e.g., 0xFFFFFFFF, que pode indicar um valor nunca escrito),
+    // inicie a rotina de encontrar o centro.
+    if (centro == 0 || centro == -1) {
+        // Se a EEPROM estiver "limpa" ou corrompida, execute a rotina de busca.
+        encontrarCentro();
+        salvarCentro(centro);
+    }
+}
+
+void salvarCentro(long valor) {
+    eeprom_update_dword(uint32_t*)EEPROM_CENTRO_ADDR, (uint32_t)valor);
+}
 
 void move(unsigned char power, bool cw = true) {
     if (power == 0) idle();
@@ -131,10 +155,11 @@ void setup() {
     sei();
 
     idle();
-    encontrarCentro();
+    carregarCentro();
 }
 
 void loop() {
+    gpLeitura = (PINB & (1<<GP_BUTTON)) ? 1 : 0
     if(!centralizado){
         centralizarVolante();
         idle();
@@ -142,6 +167,12 @@ void loop() {
     } else {
         // Já está centralizado. Então podemos mexer no servo
         servo();
+        // Botão de calibração
+        if(!gpLeitura && lastGpLeitura && millis() - millisGp > DEBOUNCE) {
+            salvarCentro(count);
+            Serial.println("Centro salvo na EEPROM");
+            millisGp = millis();
+        }
     }
     if (millis()%300==0) {
         Serial.print(count);
@@ -149,6 +180,7 @@ void loop() {
         Serial.println(absolute_sw==true?'1':'0');
         Serial.println(centralizado);
     }
+    lastGpLeitura = gpLeitura;
 }
 
 ISR(PCINT2_vect) {
