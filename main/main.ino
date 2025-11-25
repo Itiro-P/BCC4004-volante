@@ -16,6 +16,9 @@
 
 #define VOLTAS_ENCODER_DA_CHAVE_PARA_CENTRO 730
 
+#define MIN_PULSE 1050
+#define MAX_PULSE 4950
+
 #include "Rotary.h"
 volatile long count = 0; // encoder_rotativo = posicao relativa depois de ligado
 volatile bool absolute_sw = false; // chave de posicao do volante ativa?
@@ -61,8 +64,15 @@ void setup() {
   PCICR |= (1 << ROTARY_ENC_PCINT_AB_IE);
   PCMSK2 |= (1 << ROTARY_ENC_PCINT_A) | (1 << ROTARY_ENC_PCINT_B);
 
+  //TCCR1A = (1<<WGM11);
+  //TCCR1B = (1<<WGM12) | (1<<WGM13) | (1<<CS11);
+
+  //TCCR1A |= (1<<COM1A1);
+  //ICR1 = 39999;
+  //OCR1A = MIN_PULSE;
+
   DDRB &= ~((1<<GP_BUTTON)|(1<<POS_SENSOR));
-  DDRB |= (1<<ATUA_CW)|(1<<ATUA_CCW)|(1<<ATUA_STRENGTH);
+  DDRB |= (1<<ATUA_CW)|(1<<ATUA_CCW)|(1<<ATUA_STRENGTH)|(1<<SERVO);
 
   PORTB |= (1<<POS_SENSOR);
   PORTB |= (1<<GP_BUTTON);
@@ -97,9 +107,14 @@ void idle() {
 }
 
 void centralizarVolante(){
-  while(count < centro-5) move(152, 1);
+
+  while(count < centro-2){
+    move(153, 1);
+  }
   stop();
-  while(count > centro+5) move(152, 0);
+  while(count > centro+2) {
+    move(153, 0);
+  }
   stop();
   long long time = millis();
   while(time + 500 > millis());
@@ -107,6 +122,22 @@ void centralizarVolante(){
     centralizado = true;
   }
 }
+
+void servo(){
+  float giro = count/4500;
+  if(giro>1 || giro<-1){
+    return;
+  }
+  unsigned long pulse = giro * ((MAX_PULSE-MIN_PULSE)/2);
+  if(count < 0)
+    pulse *= -1;
+  else
+    pulse += (MAX_PULSE-MIN_PULSE)/2;
+
+  pulse += MIN_PULSE;
+
+}
+
 
 void loop() {
   if(!centralizado){
@@ -118,6 +149,8 @@ void loop() {
     Serial.print(count);
     Serial.print(", ");
     Serial.println(absolute_sw==true?'1':'0');
+    // Serial.print(", ");
+    // Serial.println(distanciaRestante);
     Serial.println(centralizado);
   }
 }
