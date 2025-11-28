@@ -117,11 +117,8 @@ void servo() {
         return;
     }
 
-    // Desloca o count para o intervalo 0 a 9000
-    unsigned long normalized_count = count + EDGE_COUNT;
-
     // Pulso = (Normalizado / Encoder_Range) * Pulse_Range + MIN_PULSE
-    unsigned short pulse = (unsigned short)(((normalized_count * PULSE_RANGE) / ENCODER_RANGE) + MIN_PULSE);
+    unsigned short pulse = (unsigned short)((((count + EDGE_COUNT) * PULSE_RANGE) / ENCODER_RANGE) + MIN_PULSE);
 
     OCR1A = pulse;
 }
