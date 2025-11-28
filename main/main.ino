@@ -44,11 +44,14 @@ void carregarCentro() {
     // Verificação de segurança: Se o valor lido for um valor 'default'
     // ou absurdo (e.g., 0xFFFFFFFF, que pode indicar um valor nunca escrito),
     // inicie a rotina de encontrar o centro.
+    encontrarCentro();
+    /*
     if (centro == 0 || centro == -1) {
         // Se a EEPROM estiver "limpa" ou corrompida, execute a rotina de busca.
         encontrarCentro();
         salvarCentro(centro);
     }
+     */
 }
 
 void salvarCentro(long valor) {
@@ -117,10 +120,10 @@ void servo() {
         return;
     }
 
-    // Pulso = (Normalizado / Encoder_Range) * Pulse_Range + MIN_PULSE
-    unsigned short pulse = (unsigned short)((((count + EDGE_COUNT) * PULSE_RANGE) / ENCODER_RANGE) + MIN_PULSE);
-
-    OCR1A = pulse;
+    // -4500 -> MIN_PULSE
+    // 4500 -> MAX_PULSE
+    // Mapeamento linear
+    OCR1A = (unsigned short)(double)((count - MIN_PULSE)/PULSE_RANGE * ENCODER_RANGE) + MIN_PULSE;
 }
 
 void setup() {
