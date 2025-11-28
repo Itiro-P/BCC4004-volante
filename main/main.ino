@@ -16,9 +16,27 @@
 #define DEBOUNCE 200
 
 #define VOLTAS_ENCODER_DA_CHAVE_PARA_CENTRO 730
+#define ATUA_CW PB4
+#define ATUA_CCW PB5 // HIGH aqui gira CCW
+#define ATUA_STRENGTH PB3
+
+#define ROTARY_ENC_A 6
+#define ROTARY_ENC_B 7
+#define ROTARY_ENC_PCINT_A PCINT22
+#define ROTARY_ENC_PCINT_B PCINT23
+#define ROTARY_ENC_PCINT_AB_IE PCIE2
+
+#define MAX_STRENGTH 160
+#define OFFSET 5
+#define POS_SENSOR PB2 // switch (absolute position)
+#define GP_BUTTON PB0 // general purpose button
+#define SERVO PB1
+#define DEBOUNCE 200
+
+#define VOLTAS_ENCODER_DA_CHAVE_PARA_CENTRO 730
 
 #define MIN_PULSE 1050
-#define MAX_PULSE 4950
+#define MAX_PULSE 4700
 #define PULSE_RANGE MAX_PULSE-MIN_PULSE
 #define EDGE_COUNT 4500
 #define ENCODER_RANGE (2 * EDGE_COUNT)
@@ -31,6 +49,7 @@ volatile long count = 0; // encoder_rotativo = posicao relativa depois de ligado
 volatile bool absolute_sw = false; // chave de posicao do volante ativa?
 volatile long centro = -1; // ultima posicao do centro do volante
 volatile bool centralizado = false;
+
 
 bool gpLeitura = (PINB & (1<<GP_BUTTON)) ? 1 : 0, lastGpLeitura = gpLeitura;
 unsigned long millisGp = 0;
@@ -76,10 +95,10 @@ void encontrarCentro(){
     unsigned long tempoParaFrenagem = 0;
     absolute_sw = (0==(PINB&(1<<POS_SENSOR)));
     // se o volante começar em cima da chave
-    while(!absolute_sw) move(170, 0);
+    while(!absolute_sw) move(160, 0);
     stop();
     // enquanto nao estiver na chave, roda no sentido horario
-    while(absolute_sw) move(170, 1);
+    while(absolute_sw) move(160, 1);
     stop();
     tempoParaFrenagem = millis();
     count = 0;
@@ -106,7 +125,7 @@ void centralizarVolante(){
     while(count > centro+OFFSET) move(153, 0);
     stop();
     long long time = millis();
-    while(time + 500 > millis());
+    while(time + 1000 > millis());
     if(count < centro + OFFSET || count > centro - OFFSET) centralizado = true;
 }
 
@@ -119,11 +138,9 @@ void servo() {
         OCR1A = MIN_PULSE;
         return;
     }
+    unsigned short pulse = (unsigned short)((double)(count + EDGE_COUNT)/ENCODER_RANGE * PULSE_RANGE + MIN_PULSE);
 
-    // -4500 -> MIN_PULSE
-    // 4500 -> MAX_PULSE
-    // Mapeamento linear
-    OCR1A = (unsigned short)(double)((count - MIN_PULSE)/PULSE_RANGE * ENCODER_RANGE) + MIN_PULSE;
+    OCR1A = pulse > MAX_PULSE ? MAX_PULSE : val < MIN_PULSE ? MIN_PULSE : pulse;
 }
 
 void setup() {
