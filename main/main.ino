@@ -8,7 +8,7 @@
 #define ROTARY_ENC_PCINT_B PCINT23
 #define ROTARY_ENC_PCINT_AB_IE PCIE2
 
-#define MAX_STRENGTH 160
+#define MAX_STRENGTH 170
 #define OFFSET 5
 #define POS_SENSOR PB2 // switch (absolute position)
 #define GP_BUTTON PB0 // general purpose button
@@ -95,7 +95,11 @@ void encontrarCentro(){
     unsigned long tempoParaFrenagem = 0;
     absolute_sw = (0==(PINB&(1<<POS_SENSOR)));
     // se o volante começar em cima da chave
-    while(!absolute_sw) move(160, 0);
+    while(!absolute_sw){
+      move(160, 1);
+      tempoParaFrenagem = millis();
+      while(tempoParaFrenagem + 1000 > millis());
+    };
     stop();
     // enquanto nao estiver na chave, roda no sentido horario
     while(absolute_sw) move(160, 1);
@@ -126,7 +130,16 @@ void centralizarVolante(){
     stop();
     long long time = millis();
     while(time + 1000 > millis());
+
     if(count < centro + OFFSET || count > centro - OFFSET) centralizado = true;
+}
+
+void setservo(unsigned short val){
+  if(val < MIN_PULSE){
+    OCR1A = MIN_PULSE;
+    return;
+  }
+  OCR1A = val < MAX_PULSE ? val: MAX_PULSE;
 }
 
 void servo() {
@@ -140,7 +153,7 @@ void servo() {
     }
     unsigned short pulse = (unsigned short)((double)(count + EDGE_COUNT)/ENCODER_RANGE * PULSE_RANGE + MIN_PULSE);
 
-    OCR1A = pulse > MAX_PULSE ? MAX_PULSE : val < MIN_PULSE ? MIN_PULSE : pulse;
+    setservo(pulse);
 }
 
 void setup() {
