@@ -18,7 +18,7 @@
 #define POS_SENSOR PB2 // switch (absolute position)
 #define GP_BUTTON PB0 // general purpose button
 #define SERVO PB1
-#define DEBOUNCE 200
+#define DEBOUNCE 125
 
 #define MIN_PULSE 1050
 #define MAX_PULSE 4700
@@ -28,7 +28,6 @@
 #define MAGIC_NUMBER 0xA5A5
 #define EEPROM_MAGIC_ADDR 0
 #define EEPROM_CENTRO_ADDR 2
-#define EEPROM_CHECKSUM_ADDR 6
 
 #include "Rotary.h"
 #include <avr/eeprom.h>
@@ -52,38 +51,24 @@ void salvarCentro(long valor) {
     // Salva o valor (4 bytes)
     eeprom_update_dword((uint32_t*)EEPROM_CENTRO_ADDR, (uint32_t)valor);
 
-    // Salva checksum (simples XOR)
-    uint16_t checksum = MAGIC_NUMBER ^ (valor & 0xFFFF) ^ ((valor >> 16) & 0xFFFF);
-    eeprom_update_word((uint16_t*)EEPROM_CHECKSUM_ADDR, checksum);
-
-    Serial.println("Centro salvo com validação");
+    Serial.println("Centro salvo na EEPROM");
 }
 
-void carregarCentro() {
+long carregarCentro() {
     // Verifica número mágico
     uint16_t magic = eeprom_read_word((uint16_t*)EEPROM_MAGIC_ADDR);
     if (magic != MAGIC_NUMBER) {
-        Serial.println("EEPROM corrompida (magic inválido), calibrando...");
+        Serial.println("EEPROM corrompida (número mágico inválido), calibrando...");
         encontrarCentro();
-        return;
+        return 0;
     }
 
     // Lê o valor
-    centro = (long)eeprom_read_dword((uint32_t*)EEPROM_CENTRO_ADDR);
-
-    // Verifica checksum
-    uint16_t checksum_salvo = eeprom_read_word((uint16_t*)EEPROM_CHECKSUM_ADDR);
-    uint16_t checksum_calculado = MAGIC_NUMBER ^ (centro & 0xFFFF) ^ ((centro >> 16) & 0xFFFF);
-
-    if (checksum_salvo != checksum_calculado) {
-        Serial.println("EEPROM corrompida (checksum inválido), calibrando...");
-        encontrarCentro();
-        salvarCentro(centro);
-        return;
-    }
+    novoCentro = (long)eeprom_read_dword((uint32_t*)EEPROM_CENTRO_ADDR);
 
     Serial.print("Centro carregado: ");
-    Serial.println(centro);
+    Serial.println(novoCentro);
+    return novoCentro;
 }
 
 void move(unsigned char power, bool cw = true) {
@@ -132,29 +117,22 @@ void idle() {
     PORTB &= ~((1<<ATUA_CW) | (1<<ATUA_CCW));
 }
 
-void centralizarVolante(){
-    while(count < centro-OFFSET) move(153, 1);
+void centralizarVolante(long alvo) {
+    while(count < alvo-OFFSET) move(153, 1);
     stop();
-    while(count > centro+OFFSET) move(153, 0);
+    while(count > alvo+OFFSET) move(153, 0);
     stop();
     long long time = millis();
     while(time + 1000 > millis());
 
-    if(count < centro + OFFSET || count > centro - OFFSET) centralizado = true;
+    if(count < alvo + OFFSET || count > alvo - OFFSET) centralizado = true;
+    centro = alvo;
+    idle();
+    count = 0;
 }
 
 void servo() {
-    if(count > EDGE_COUNT) {
-        OCR1A = MAX_PULSE;
-        return;
-    }
-    if(count < -EDGE_COUNT) {
-        OCR1A = MIN_PULSE;
-        return;
-    }
-    //unsigned short pulse = (unsigned short)((double)(count + EDGE_COUNT)/ENCODER_RANGE * PULSE_RANGE + MIN_PULSE);
-    unsigned short pulse = (unsigned short)(MAX_PULSE - ((double)(count + EDGE_COUNT)/ENCODER_RANGE * PULSE_RANGE));
-    OCR1A = pulse > MAX_PULSE ? MAX_PULSE : pulse < MIN_PULSE ? MIN_PULSE : pulse;
+    OCR1A = map(pulse, -EDGE_COUNT, EDGE_COUNT, MAX_PULSE, MIN_PULSE);
 }
 
 void setup() {
@@ -192,16 +170,16 @@ void setup() {
 void loop() {
     gpLeitura = (PINB & (1<<GP_BUTTON)) ? 1 : 0;
     if(!centralizado){
-        centralizarVolante();
-        idle();
-        count = 0;
+        centralizarVolante(centro);
+        // Achamos o centro original. Então carregaremos a EEPROM e iremos ao centro definido nela.
+        long novoCentro = carregarCentro();
+        if(novoCentro != 0) centralizarVolante(novoCentro);
     } else {
         // Já está centralizado. Então podemos mexer no servo
         servo();
         // Botão de calibração
         if(!gpLeitura && lastGpLeitura && millis() - millisGp > DEBOUNCE) {
-            salvarCentro(count);
-            Serial.println("Centro salvo na EEPROM");
+            salvarCentro(count - centro);
             millisGp = millis();
         }
     }
