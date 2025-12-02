@@ -64,7 +64,7 @@ long carregarCentro() {
     }
 
     // Lê o valor
-    novoCentro = (long)eeprom_read_dword((uint32_t*)EEPROM_CENTRO_ADDR);
+    long novoCentro = (long)eeprom_read_dword((uint32_t*)EEPROM_CENTRO_ADDR);
 
     Serial.print("Centro carregado: ");
     Serial.println(novoCentro);
@@ -132,7 +132,7 @@ void centralizarVolante(long alvo) {
 }
 
 void servo() {
-    OCR1A = map(pulse, -EDGE_COUNT, EDGE_COUNT, MAX_PULSE, MIN_PULSE);
+    OCR1A = map(count, -EDGE_COUNT, EDGE_COUNT, MAX_PULSE, MIN_PULSE);
 }
 
 void setup() {
@@ -178,7 +178,7 @@ void loop() {
         servo();
         // Botão de calibração
         if(!gpLeitura && lastGpLeitura && millis() - millisGp > DEBOUNCE) {
-            salvarCentro(count - centro);
+            salvarCentro(count + centro);
             millisGp = millis();
         }
     }
