@@ -27,11 +27,12 @@
 #define ENCODER_RANGE (2 * EDGE_COUNT)
 #define MAGIC_NUMBER 0xA5A5
 #define EEPROM_MAGIC_ADDR 0
-#define EEPROM_CENTRO_ADDR 2
+#define EEPROM_DISTANCIA_ADDR 2
 
 #include "Rotary.h"
 #include <avr/eeprom.h>
 
+volatile long distanciaChave = VOLTAS_ENCODER_DA_CHAVE_PARA_CENTRO;
 volatile long count = 0; // encoder_rotativo = posicao relativa depois de ligado
 volatile bool absolute_sw = false; // chave de posicao do volante ativa?
 volatile long centro = -1; // ultima posicao do centro do volante
@@ -44,31 +45,27 @@ unsigned long millisGp = 0;
 Rotary r = Rotary(ROTARY_ENC_A, ROTARY_ENC_B);
 
 
-void salvarCentro(long valor) {
+void salvarDistancia(long valor) {
     // Salva magic number (2 bytes)
     eeprom_update_word((uint16_t*)EEPROM_MAGIC_ADDR, MAGIC_NUMBER);
 
     // Salva o valor (4 bytes)
     eeprom_update_dword((uint32_t*)EEPROM_CENTRO_ADDR, (uint32_t)valor);
 
-    Serial.println("Centro salvo na EEPROM");
+    Serial.println("Distancia ate a chave salvo na EEPROM");
 }
 
-long carregarCentro() {
-    // Verifica número mágico
+bool carregarDistancia() {
     uint16_t magic = eeprom_read_word((uint16_t*)EEPROM_MAGIC_ADDR);
     if (magic != MAGIC_NUMBER) {
-        Serial.println("EEPROM corrompida (número mágico inválido), calibrando...");
-        encontrarCentro();
-        return 0;
+        Serial.println("EEPROM vazia, usando distância padrão: 730");
+        return false;
     }
 
-    // Lê o valor
-    long novoCentro = (long)eeprom_read_dword((uint32_t*)EEPROM_CENTRO_ADDR);
-
-    Serial.print("Centro carregado: ");
-    Serial.println(novoCentro);
-    return novoCentro;
+    distanciaChave = (long)eeprom_read_dword((uint32_t*)EEPROM_DISTANCIA_ADDR);
+    Serial.print("Distância carregada da EEPROM: ");
+    Serial.println(distanciaChave);
+    return true;
 }
 
 void move(unsigned char power, bool cw = true) {
@@ -88,7 +85,7 @@ void move(unsigned char power, bool cw = true) {
 void encontrarCentro(){
     unsigned long tempoParaFrenagem = 0;
     absolute_sw = (0==(PINB&(1<<POS_SENSOR)));
-    // se o volante começar em cima da chave
+    // se o volante começar em cima da chave, move um pouquinho para encontrar a posição exata na próxima volta
     while(!absolute_sw){
       move(160, 1);
       tempoParaFrenagem = millis();
@@ -100,7 +97,7 @@ void encontrarCentro(){
     stop();
     tempoParaFrenagem = millis();
     count = 0;
-    while(tempoParaFrenagem + 600 > millis()) centro = VOLTAS_ENCODER_DA_CHAVE_PARA_CENTRO-count;
+    while(tempoParaFrenagem + 600 > millis()) centro = distanciaChave-count;
     count = 0;
 }
 
@@ -117,16 +114,15 @@ void idle() {
     PORTB &= ~((1<<ATUA_CW) | (1<<ATUA_CCW));
 }
 
-void centralizarVolante(long alvo) {
-    while(count < alvo-OFFSET) move(153, 1);
+void centralizarVolante() {
+    while(count < centro-OFFSET) move(153, 1);
     stop();
-    while(count > alvo+OFFSET) move(153, 0);
+    while(count > centro+OFFSET) move(153, 0);
     stop();
     long long time = millis();
     while(time + 1000 > millis());
 
-    if(count < alvo + OFFSET || count > alvo - OFFSET) centralizado = true;
-    centro = alvo;
+    if(count < centro + OFFSET || count > centro - OFFSET) centralizado = true;
     idle();
     count = 0;
 }
@@ -163,22 +159,22 @@ void setup() {
 
     sei();
     idle();
+    carregarDistancia();
     encontrarCentro();
 }
 
 void loop() {
     gpLeitura = (PINB & (1<<GP_BUTTON)) ? 1 : 0;
     if(!centralizado){
-        centralizarVolante(centro);
-        // Achamos o centro original. Então carregaremos a EEPROM e iremos ao centro definido nela.
-        long novoCentro = carregarCentro();
-        if(novoCentro != 0) centralizarVolante(novoCentro);
+        centralizarVolante();
     } else {
         // Já está centralizado. Então podemos mexer no servo
         servo();
         // Botão de calibração
         if(!gpLeitura && lastGpLeitura && millis() - millisGp > DEBOUNCE) {
-            salvarCentro(count + centro);
+            salvarDistancia(count+distanciaChave);
+            distanciaChave = distanciaChave + count;  // Atualiza a variável também
+            count = 0;  // Reseta porque agora está no novo centro
             millisGp = millis();
         }
     }
