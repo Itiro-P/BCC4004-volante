@@ -162,9 +162,8 @@ void setup() {
     TCCR2A |= (1<<COM2A1);
 
     sei();
-
     idle();
-    carregarCentro();
+    encontrarCentro();
 }
 
 void loop() {
