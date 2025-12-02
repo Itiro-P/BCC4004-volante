@@ -8,23 +8,10 @@
 #define ROTARY_ENC_PCINT_B PCINT23
 #define ROTARY_ENC_PCINT_AB_IE PCIE2
 
-#define MAX_STRENGTH 170
-#define OFFSET 5
-#define POS_SENSOR PB2 // switch (absolute position)
-#define GP_BUTTON PB0 // general purpose button
-#define SERVO PB1
-#define DEBOUNCE 200
-
 #define VOLTAS_ENCODER_DA_CHAVE_PARA_CENTRO 730
 #define ATUA_CW PB4
 #define ATUA_CCW PB5 // HIGH aqui gira CCW
 #define ATUA_STRENGTH PB3
-
-#define ROTARY_ENC_A 6
-#define ROTARY_ENC_B 7
-#define ROTARY_ENC_PCINT_A PCINT22
-#define ROTARY_ENC_PCINT_B PCINT23
-#define ROTARY_ENC_PCINT_AB_IE PCIE2
 
 #define MAX_STRENGTH 160
 #define OFFSET 5
@@ -32,8 +19,6 @@
 #define GP_BUTTON PB0 // general purpose button
 #define SERVO PB1
 #define DEBOUNCE 200
-
-#define VOLTAS_ENCODER_DA_CHAVE_PARA_CENTRO 730
 
 #define MIN_PULSE 1050
 #define MAX_PULSE 4700
@@ -80,7 +65,6 @@ void carregarCentro() {
     if (magic != MAGIC_NUMBER) {
         Serial.println("EEPROM corrompida (magic inválido), calibrando...");
         encontrarCentro();
-        salvarCentro(centro);
         return;
     }
 
