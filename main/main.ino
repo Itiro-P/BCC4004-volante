@@ -50,7 +50,7 @@ void salvarDistancia(long valor) {
     eeprom_update_word((uint16_t*)EEPROM_MAGIC_ADDR, MAGIC_NUMBER);
 
     // Salva o valor (4 bytes)
-    eeprom_update_dword((uint32_t*)EEPROM_CENTRO_ADDR, (uint32_t)valor);
+    eeprom_update_dword((uint32_t*)EEPROM_DISTANCIA_ADDR, (uint32_t)valor);
 
     Serial.println("Distancia ate a chave salvo na EEPROM");
 }
