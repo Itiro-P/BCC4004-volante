@@ -263,8 +263,8 @@ void loop() {
         if(!gpLeitura && lastGpLeitura && millis() - millisGp > DEBOUNCE) {
             // Salvamos a distancia até a chave
             //salvarDistancia(count+distanciaChave);
-            // Tentamos reduzir o número de voltas que o volante daria pelo 'distanciaChave'
-            // ENCODER_RANGE é basicamente 2,5 voltas. Então temos 9000/2,5 para uma volta
+            // Tentamos reduzir o número de voltas que o volante daria até 'distanciaChave'
+            // ENCODER_RANGE é basicamente 2,5 voltas. Então temos PULSOS_POR_VOLTA (ENCODER_RANGE/2,5) para uma volta
             long novaDistancia = count % PULSOS_POR_VOLTA;
             // Garante que o resultado seja positivo (caso tenha calibrado girando para a esquerda)
             if(novaDistancia < 0) novaDistancia += PULSOS_POR_VOLTA;
