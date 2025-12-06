@@ -40,6 +40,7 @@
 // Valores do contador de pulso: [-4500,4500] dá cerca de 2,5 voltas de um lado para o outro
 #define EDGE_COUNT 4500
 #define ENCODER_RANGE (2 * EDGE_COUNT)
+#define PULSOS_POR_VOLTA (int)(ENCODER_RANGE / 2.5)
 
 // define usado para forçar a centralização manual
 #define MANUAL true
@@ -56,8 +57,8 @@
 #include "Rotary.h"
 #include <avr/eeprom.h>
 
-volatile long distanciaChave = VOLTAS_ENCODER_DA_CHAVE_PARA_CENTRO;
-volatile long count = 0; // encoder_rotativo = posicao relativa depois de ligado
+volatile long distanciaChave = VOLTAS_ENCODER_DA_CHAVE_PARA_CENTRO; // distância daté a chave
+volatile long count = 0; // posicao relativa até a chave depois de ligado
 volatile bool absolute_sw = false; // chave de posicao do volante ativa?
 volatile long centro = -1; // ultima posicao do centro do volante
 volatile bool centralizado = false;
@@ -107,6 +108,7 @@ void move(unsigned char power, bool cw = true) {
     }
 }
 
+/*
 void encontrarCentro(){
     unsigned long tempoParaFrenagem = 0;
     unsigned long temp;
@@ -130,6 +132,28 @@ void encontrarCentro(){
     while(tempoParaFrenagem + 600 > millis()) centro = distanciaChave-count;
     count = 0;
 }
+ */
+
+ void encontrarCentro(){
+     absolute_sw = (0 == (PINB & (1 << POS_SENSOR)));
+
+     // Se ligou em cima da chave, sai dela
+     while(!absolute_sw) move(NORMAL_STRENGTH, 1);
+     stop();
+     // Delay de 1 segundo para estabilizar
+     unsigned long time = millis();
+     while(time + 1000 > millis());
+
+     // Procura a chave
+     while(absolute_sw) move(NORMAL_STRENGTH, 1);
+
+     // Achou! Zera a referência absoluta
+     stop();
+     count = 0;
+
+     // Define o alvo baseado na memória (ou fallback de 730)
+     centro = distanciaChave;
+ }
 
 void setPWM(unsigned char val) {
     OCR2A = val < MAX_STRENGTH ? val: MAX_STRENGTH;
@@ -144,24 +168,54 @@ void idle() {
     PORTB &= ~((1<<ATUA_CW) | (1<<ATUA_CCW));
 }
 
+/*
 void centralizarVolante() {
     // Procura centralizar o volante com um erro de OFFSET
     while(count < centro-OFFSET) move(MENOR_STRENGTH, 1);
     stop();
     while(count > centro+OFFSET) move(MENOR_STRENGTH, 0);
     stop();
-    // Espera um pouco para ver se realmente estamos centralizados
+    // Espera um pouco para estabilizar e ver se realmente estamos centralizados
     long long time = millis();
     while(time + 1000 > millis());
-    if(count < centro + OFFSET || count > centro - OFFSET) centralizado = true;
+    if(count >= centro - OFFSET && count <= centro + OFFSET) centralizado = true;
     idle();
     count = 0;
 }
+ */
 
+ void centralizarVolante() {
+     // Procura centralizar o volante com um erro de OFFSET
+     // Talvez um `while` não faria muito sentido já que este código pode ser chamado mais de uma vez no loop() tranquilamente
+     if(count < centro-OFFSET) move(MENOR_STRENGTH, 1);
+     else if(count > centro+OFFSET) move(MENOR_STRENGTH, 0);
+     else {
+         // Espera um pouco para estabilizar e ver se realmente estamos centralizados
+         // Chamar isso no loop() pode dar problema. Então confiaremos no sistema físico
+         // e não utilizaremos delay
+         //unsigned long time = millis();
+         //while(time + 1000 > millis());
+         stop();
+         if(count >= centro - OFFSET && count <= centro + OFFSET) {
+             idle();
+             centralizado = true;
+         }
+     }
+ }
+
+/*
 void servo() {
-    if(count < -EDGE_COUNT || count > EDGE_COUNT) return; 
+    if(count < -EDGE_COUNT || count > EDGE_COUNT) return;
     // Aqui usamos a função map de forma inversa: min -> max e max -> min:
     OCR1A = map(count, -EDGE_COUNT, EDGE_COUNT, MAX_PULSE, MIN_PULSE);
+}
+ */
+
+void servo() {
+    long pos_relativa = count-centro;
+    if(pos_relativa < -EDGE_COUNT || pos_relativa > EDGE_COUNT) return;
+    // Aqui usamos a função map de forma inversa: min -> max e max -> min:
+    OCR1A = map(pos_relativa, -EDGE_COUNT, EDGE_COUNT, MAX_PULSE, MIN_PULSE);
 }
 
 void setup() {
@@ -176,14 +230,14 @@ void setup() {
     DDRB &= ~((1<<GP_BUTTON) | (1<<POS_SENSOR));
 
     PORTB |= ((1<<POS_SENSOR) | (1<<GP_BUTTON));
-    PORTB &= ~((1<<ATUA_CW)|(1<<ATUA_CCW));    
+    PORTB &= ~((1<<ATUA_CW)|(1<<ATUA_CCW));
 
     // PWM do servo
-    // Ativa saída PWM no pino OC1A (PB1) - modo não invertido 
-    // WGM11 = 1 
+    // Ativa saída PWM no pino OC1A (PB1) - modo não invertido
+    // WGM11 = 1
     TCCR1A = ((1<<WGM11) | (1<<COM1A1));
-    TCCR1B = ((1<<WGM13) | (1<<WGM12) | (1<<CS11)); // WGM13=1, WGM12=1, Prescaler 8 
-    ICR1 = 39999; // ICR1 = (16MHz / (8 * 50Hz)) - 1 = 40000 - 1 
+    TCCR1B = ((1<<WGM13) | (1<<WGM12) | (1<<CS11)); // WGM13=1, WGM12=1, Prescaler 8
+    ICR1 = 39999; // ICR1 = (16MHz / (8 * 50Hz)) - 1 = 40000 - 1
     OCR1A = (MAX_PULSE + MIN_PULSE) / 2; // Inicia no centro (90°)
 
     // PWM do volante
@@ -208,7 +262,15 @@ void loop() {
         // Botão de calibração
         if(!gpLeitura && lastGpLeitura && millis() - millisGp > DEBOUNCE) {
             // Salvamos a distancia até a chave
-            salvarDistancia(count+distanciaChave);
+            //salvarDistancia(count+distanciaChave);
+            // Tentamos reduzir o número de voltas que o volante daria pelo 'distanciaChave'
+            // ENCODER_RANGE é basicamente 2,5 voltas. Então temos 9000/2,5 para uma volta
+            long novaDistancia = count % PULSOS_POR_VOLTA;
+            // Garante que o resultado seja positivo (caso tenha calibrado girando para a esquerda)
+            if(novaDistancia < 0) novaDistancia += PULSOS_POR_VOLTA;
+            salvarDistancia(novaDistancia);
+            distanciaChave = novaDistancia;
+            centro = distanciaChave;
             millisGp = millis();
         }
     }
