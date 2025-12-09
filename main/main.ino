@@ -30,7 +30,7 @@
 
 // Força a ser usada
 #define NORMAL_STRENGTH 160
-#define MENOR_STRENGTH 150
+#define MENOR_STRENGTH 153
 
 // Pulsos mínimo e máximo do servo utilizado (testado empiricamente)
 #define MIN_PULSE 1050
@@ -123,7 +123,7 @@ void encontrarCentro(){
         // enquanto não estiver na chave, roda no sentido hoário
         temp = millis();
         while(absolute_sw) move(NORMAL_STRENGTH, 1);
-        if (temp+300 > millis()) move(MAX_STRENGTH, 1);
+        if (temp+300 > millis()) move(NORMAL_STRENGTH, 1);
     } while(temp+300 > millis());
     stop();
     tempoParaFrenagem = millis();
