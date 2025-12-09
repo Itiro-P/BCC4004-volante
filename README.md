@@ -1,4 +1,4 @@
-### Projeto Volante — README
+### Projeto Volante.
 
 Aqui contém o código `main.ino` para um projeto de **volante elétrico (drive‑by‑wire)**. O objetivo é **medir a posição do volante**, **centralizá‑lo na inicialização** e **atuar nas rodas** por meio de um servo quando o volante for manipulado. O projeto usa um encoder ótico, um motor DC com controle PWM e um servo (sinal PWM gerado pelo Timer1). Abaixo está a explicação da estrutura do código, entradas, processamento, saídas, funções e cálculos para garantir **2,5 voltas** do volante entre os limites de esterçamento.
 
