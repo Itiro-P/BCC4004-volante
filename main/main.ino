@@ -23,14 +23,14 @@
 
 #define VOLTAS_ENCODER_DA_CHAVE_PARA_CENTRO 730
 // Margem de erro da centralização
-#define OFFSET 5
+#define OFFSET 10
 
-// Força máxima. Velocidade não chega a importar aqui, logo consideramos um valor mais baixo tempo para tenhamos maior precisão
+// Força máxima. Velocidade não chega a importar aqui, logo consideramos um valor mais baixo para que tenhamos maior precisão
 #define MAX_STRENGTH 170
 
 // Força a ser usada
 #define NORMAL_STRENGTH 160
-#define MENOR_STRENGTH 153
+#define MENOR_STRENGTH 154
 
 // Pulsos mínimo e máximo do servo utilizado (testado empiricamente)
 #define MIN_PULSE 1050
@@ -44,6 +44,8 @@
 
 // define usado para forçar a centralização manual
 #define MANUAL false
+// define usado para parada forçada
+#define FORCED true
 
 /*
  * Variáveis para usar na EEPROM
@@ -120,7 +122,7 @@ void encontrarCentro(){
             while(tempoParaFrenagem + 200 > millis());
         };
         stop();
-        // enquanto não estiver na chave, roda no sentido hoário
+        // enquanto não estiver na chave, roda no sentido horário
         temp = millis();
         while(absolute_sw) move(NORMAL_STRENGTH, 1);
         if (temp+300 > millis()) move(NORMAL_STRENGTH, 1);
@@ -145,12 +147,26 @@ void idle() {
     PORTB &= ~((1<<ATUA_CW) | (1<<ATUA_CCW));
 }
 
+void forcedStop(bool cw = true) {
+    unsigned long time = millis();
+    while(time + 50 > millis()) move(130, !cw);
+    stop();
+}
+
 void centralizarVolante() {
     // Procura centralizar o volante com um erro de OFFSET
-    while(count <= centro-OFFSET) move(MENOR_STRENGTH, 1);
+    while(count < centro-OFFSET) move(MENOR_STRENGTH, 1);
+    #ifdef FORCED
+    forcedStop(1);
+    #else
     stop();
-    while(count >= centro+OFFSET) move(MENOR_STRENGTH, 0);
+    #endif
+    while(count > centro+OFFSET) move(MENOR_STRENGTH, 0);
+    #ifdef FORCED
+    forcedStop(0);
+    #else
     stop();
+    #endif
     // Espera um pouco para estabilizar e ver se realmente estamos centralizados
     unsigned long time = millis();
     while(time + 1000 > millis());
@@ -212,7 +228,13 @@ void loop() {
             * Tentamos reduzir o número de voltas que o volante daria até 'distanciaChave'
             * ENCODER_RANGE é basicamente 2,5 voltas. Então temos PULSOS_POR_VOLTA (ENCODER_RANGE/2,5) para uma volta
             */
-            long novaDistancia = count % PULSOS_POR_VOLTA;
+            long novaDistancia = (count % PULSOS_POR_VOLTA);
+            /*
+            * Colocamos o múltiplo de 10 mais próximo desse número.
+            */
+            int resto = novaDistancia % 10;
+            if(resto >= 5) novaDistancia += (10 - resto);
+            else novaDistancia -= resto;
             // Garante que o resultado seja positivo (caso tenha calibrado girando para a esquerda)
             if(novaDistancia < 0) novaDistancia += PULSOS_POR_VOLTA;
             salvarDistancia(novaDistancia);
